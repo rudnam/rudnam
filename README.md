@@ -6,7 +6,7 @@
   <img height="150" src="https://github-readme-stats.vercel.app/api/top-langs/?username=rudnam&exclude_repo=Anki-card-maker&layout=compact&theme=dark&border_color=404040&card_width=412" />
   <img height="150" src="https://github-readme-stats.vercel.app/api/wakatime?username=rudnam&theme=dark&border_color=404040" />
 </p>
-<p>
+<p align="center">
   <img src="https://leetcard.jacoblin.cool/rudnam?ext=heatmap">
 </p>
 
