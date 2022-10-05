@@ -12,11 +12,6 @@
   <img src="https://github-readme-stats.vercel.app/api/wakatime?username=rudnam&theme=dark&border_color=404040"/>
   </a>
 </p>
-<p align="center">
-  <a href="https://leetcode.com/rudnam/">
-  <img src="https://leetcard.jacoblin.cool/rudnam?ext=heatmap">
-  </a>
-</p>
 
 ![](https://hit.yhype.me/github/profile?user_id=70255485)
 
