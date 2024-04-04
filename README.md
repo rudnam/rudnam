@@ -1,4 +1,3 @@
-# rudnam
 <p align="center">
   <a href="https://wakatime.com/@rudnam">
   <img src="https://wakatime.com/badge/user/2d51cbf8-4a24-49f7-a1bb-6b7ff92c6163.svg" align="center">
