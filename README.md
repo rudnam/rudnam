@@ -1,10 +1,16 @@
 <p align="center">
-  <a href="https://github.com/rudnam?tab=repositories"><img height=150 align="center" src="https://github-readme-stats.vercel.app/api?username=rudnam&theme=transparent&border_color=00000000&show_icons=true&custom_title=rudnam's%20Github%20Stats&card_width=480px"/></a>
-  <a href="https://wakatime.com/@rudnam">
-  <img height=150 width=450 align="center" src="https://github-readme-stats.vercel.app/api/wakatime?username=rudnam&theme=transparent&border_color=00000000&range=all_time&langs_count=6&layout=compact&custom_title=rudnam's%20WakaTime%20Stats"/>
-  </a>
-
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rudnam/rudnam/output/weather-dark.svg">
+    <img alt="rudnam's coding forecast" src="https://raw.githubusercontent.com/rudnam/rudnam/output/weather-light.svg" width="49%">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rudnam/rudnam/output/clock-dark.svg">
+    <img alt="When rudnam commits" src="https://raw.githubusercontent.com/rudnam/rudnam/output/clock-light.svg" width="49%">
+  </picture>
 </p>
-
-![](https://hit.yhype.me/github/profile?user_id=70255485)
-
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rudnam/rudnam/output/pet-dark.svg">
+    <img alt="gopher, rudnam's commit-fed pet" src="https://raw.githubusercontent.com/rudnam/rudnam/output/pet-light.svg" width="480">
+  </picture>
+</p>
