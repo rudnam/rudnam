@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const USER = "rudnam";
 const TZ = "Asia/Tokyo";
+const PLACE = "Nagoya"; // shown on the cards; TZ only sets the clock
 const PET_NAME = "gopher";
 const OUT = process.argv[2] ?? "dist";
 
@@ -129,7 +130,6 @@ const FONT_FACES = (await Promise.all([300, 400, 500, 600].map(async (w) => {
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const placeLabel = TZ.split("/").pop().replace(/_/g, " ");
 
 function card(t, title, eyebrow, aside, body, style = "") {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">
@@ -250,7 +250,7 @@ ${hairline(t, 210)}
 <text x="${PAD}" y="229" font-size="11" class="m">${esc(summary)}</text>
 <text x="${W - PAD}" y="229" font-size="11" class="m" text-anchor="end">${streak(byDay)}-day streak  ·  ${privatePct}% private</text>`;
 
-  return card(t, `${USER}'s coding forecast`, "Coding forecast", `${dateLabel} · ${placeLabel}`, body);
+  return card(t, `${USER}'s coding forecast`, "Coding forecast", `${dateLabel} · ${PLACE}`, body);
 }
 
 // ---------- commit clock ----------
@@ -318,7 +318,7 @@ ${stat(X, 128, "Peak hour", hh(peak))}
 ${stat(X + 112, 128, "Commits", total)}`
 + `\n${week}`;
 
-  return card(t, `When ${USER} commits`, "Commit clock", `Last 12 months · ${placeLabel}`, body,
+  return card(t, `When ${USER} commits`, "Commit clock", `Last 12 months · ${PLACE}`, body,
     `.pulse{animation:pulse 2.4s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}`);
 }
 
