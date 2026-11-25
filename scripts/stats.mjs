@@ -1,4 +1,4 @@
-// Renders the profile README cards (almanac, commit hours, the year, pet) from
+// Renders the profile README cards (now building, commit hours, the year) from
 // the GitHub GraphQL API, in rudnam.com's quiet look: ivory paper, espresso ink,
 // a muted bronze accent, PT Serif, and one idea per card.
 // Usage: GITHUB_TOKEN=... node scripts/stats.mjs [outDir]
@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 const USER = "rudnam";
 const TZ = "Asia/Tokyo";
 const PLACE = "Nagoya"; // shown on the cards; TZ only sets the clock
-const PET_NAME = "gopher";
 const OUT = process.argv[2] ?? "dist";
 
 const TOKEN = process.env.GITHUB_TOKEN;
@@ -45,7 +44,7 @@ async function fetchProfile() {
         }
         repositories(first: 100, ownerAffiliations: OWNER, isFork: false,
                      orderBy: { field: PUSHED_AT, direction: DESC }) {
-          nodes { name pushedAt primaryLanguage { name } }
+          nodes { name description isPrivate pushedAt primaryLanguage { name } }
         }
       }
     }`,
@@ -64,7 +63,7 @@ async function fetchCommits(repo, authorId, since) {
           defaultBranchRef { target { ... on Commit {
             history(first: 100, after: $after, since: $since, author: { id: $author }) {
               pageInfo { hasNextPage endCursor }
-              nodes { committedDate }
+              nodes { committedDate messageHeadline }
             }
           } } }
         }
@@ -73,7 +72,7 @@ async function fetchCommits(repo, authorId, since) {
     );
     const history = repository.defaultBranchRef?.target?.history;
     if (!history) break;
-    commits.push(...history.nodes.map((n) => new Date(n.committedDate)));
+    commits.push(...history.nodes.map((n) => ({ date: new Date(n.committedDate), message: n.messageHeadline })));
     after = history.pageInfo.hasNextPage ? history.pageInfo.endCursor : null;
   } while (after);
   return commits;
@@ -99,8 +98,8 @@ async function collect() {
   const commits = [];
   for (const repo of repos) {
     const lang = repo.primaryLanguage?.name;
-    for (const date of await fetchCommits(repo.name, profile.id, since)) {
-      commits.push({ date, repo: repo.name, lang: LANGUAGE_NAMES[lang] ?? lang ?? "Other", ...local(date) });
+    for (const { date, message } of await fetchCommits(repo.name, profile.id, since)) {
+      commits.push({ date, message, repo: repo.name, lang: LANGUAGE_NAMES[lang] ?? lang ?? "Other", ...local(date) });
     }
   }
   commits.sort((a, b) => b.date - a.date);
@@ -112,6 +111,7 @@ async function collect() {
     yearPrivate: cc.restrictedContributionsCount,
     calendar: cc.contributionCalendar.weeks.map((w) => w.contributionDays),
     commits,
+    repos: profile.repositories.nodes,
   };
 }
 
@@ -168,21 +168,6 @@ function lastDays(n) {
   });
 }
 
-function countByDay(commits) {
-  const m = new Map();
-  for (const c of commits) m.set(c.day, (m.get(c.day) ?? 0) + 1);
-  return m;
-}
-
-function streak(byDay) {
-  const days = lastDays(400);
-  // Today without commits yet doesn't break the streak.
-  let i = byDay.has(days[0].day) ? 0 : 1;
-  let n = 0;
-  while (i < days.length && byDay.has(days[i].day)) { n++; i++; }
-  return n;
-}
-
 // en-GB puts the day first ("25 November"); en-US keeps "Sep" short.
 const dateFmt = (opts, locale = "en-GB") => new Intl.DateTimeFormat(locale, { timeZone: TZ, ...opts });
 
@@ -192,57 +177,6 @@ function languageLine(commits, lead = "Mostly") {
   const top = [...langs].sort((a, b) => b[1] - a[1]).map(([l]) => l).filter((l) => l !== "Other").slice(0, 3);
   if (!top.length) return "";
   return `${lead} ${top[0]}${top.length > 1 ? `, then ${top.slice(1).join(" and ")}` : ""}`;
-}
-
-// ---------- almanac (coding weather) ----------
-
-// Line icons on a 24-unit grid (Feather, MIT).
-const ICONS = {
-  clear: `<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>`,
-  drizzle: `<path d="M8 19v1M8 14v1M16 19v1M16 14v1M12 21v1M12 16v1M20 16.6A5 5 0 0 0 18 7h-1.3A8 8 0 1 0 4 15.3"/>`,
-  rain: `<path d="M16 13v8M8 13v8M12 15v8M20 16.6A5 5 0 0 0 18 7h-1.3A8 8 0 1 0 4 15.3"/>`,
-  storm: `<path d="M19 16.9A5 5 0 0 0 18 7h-1.3a8 8 0 1 0-11.6 9"/><path d="M13 11l-4 6h6l-4 6"/>`,
-};
-
-function icon(kind, x, y, size, color, width = 1) {
-  const s = size / 24;
-  return `<g transform="translate(${x - size / 2} ${y - size / 2}) scale(${s})" fill="none" stroke="${color}" stroke-width="${width / s}" stroke-linecap="round" stroke-linejoin="round">${ICONS[kind]}</g>`;
-}
-
-function condition(count) {
-  if (count === 0) return ["clear", "Clear skies"];
-  if (count <= 3) return ["drizzle", "Light drizzle"];
-  if (count <= 9) return ["rain", "Steady rain"];
-  return ["storm", "Thunderstorms"];
-}
-
-function almanac(t, data) {
-  const { commits } = data;
-  const byDay = countByDay(commits);
-  const week = lastDays(7).reverse();
-  const last24 = commits.filter((c) => c.date >= now - DAY).length;
-  const activeDays28 = lastDays(28).filter((d) => byDay.has(d.day)).length;
-  const chance = Math.round((activeDays28 / 28) * 100);
-  const dateLabel = dateFmt({ weekday: "long", day: "numeric", month: "long" }).format(now);
-  const [kind, label] = condition(last24);
-
-  // The week as a quiet row of numbers; today in bronze.
-  const colW = (W - 2 * PAD) / 7;
-  const days = week.map((d, i) => {
-    const x = PAD + colW * i + colW / 2;
-    const n = byDay.get(d.day) ?? 0;
-    const today = i === week.length - 1;
-    return `<text x="${x}" y="164" text-anchor="middle" class="sc"${today ? ` style="fill:${t.accent}"` : ""}>${today ? "TODAY" : d.weekday.toUpperCase()}</text>
-<text x="${x}" y="186" text-anchor="middle" font-size="14" class="${today ? "a" : n ? "b" : "f"}">${n}</text>`;
-  }).join("\n");
-
-  const body = `
-${headline(label)}
-${note(`${plural(last24, "commit")} in the last day, ${chance}% chance tomorrow`)}
-${icon(kind, W - PAD - 16, 88, 32, t.accent)}
-${days}`;
-
-  return card(t, `${USER}'s coding almanac`, "Coding almanac", `${dateLabel} · ${PLACE}`, body);
 }
 
 // ---------- commit hours ----------
@@ -325,86 +259,46 @@ ${note(`On ${activeDays} days of the last year`)}
   return card(t, `${USER}'s year of contributions`, "The year", languageLine(data.commits), body);
 }
 
-// ---------- pet ----------
+// ---------- now building ----------
 
-// 16x16 sprite. o outline, b body, w eye white, k pupil, n nose, t tooth, f paws.
-const SPRITE = {
-  base: [
-    "..oo........oo..",
-    ".obboooooooobbo.",
-    ".obbbbbbbbbbbbo.",
-    "obbwwwbbbbwwwbbo",
-    "obwwwwwbbwwwwwbo",
-    "obwwkkwbbwwkkwbo",
-    "obwwkkwbbwwkkwbo",
-    "obbwwwbnnbwwwbbo",
-    "obbbbbnnnnbbbbbo",
-    "obbbbbbttbbbbbbo",
-    "obffbbbbbbbbffbo",
-    "obbbbbbbbbbbbbbo",
-    "obbbbbbbbbbbbbbo",
-    ".obbbbbbbbbbbbo.",
-    "..oooooooooooo..",
-    "...ff......ff...",
-  ],
-  // Rows replaced per frame.
-  closed: { 3: "obbbbbbbbbbbbbbo", 4: "obbbbbbbbbbbbbbo", 5: "obbooobbbbooobbo", 6: "obbbbbbbbbbbbbbo", 7: "obbbbbbnnbbbbbbo" },
-  hungry: { 5: "obwwwwwbbwwwwwbo", 6: "obwwkkwbbwwkkwbo", 7: "obbwkkbnnbkkwbbo" },
-};
+const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
-function petState(daysSince) {
-  if (daysSince < 1) return { mood: "happy", line: "Well fed and in high spirits" };
-  if (daysSince < 3) return { mood: "content", line: "Full, and a little sleepy" };
-  if (daysSince < 7) return { mood: "hungry", line: "Hungry, a commit would help" };
-  return { mood: "sleeping", line: "Asleep until the next commit" };
-}
+// The project with the most commits this week, and the days it was touched.
+function nowBuilding(t, data) {
+  const week = data.commits.filter((c) => c.date >= now - 7 * DAY);
+  const byRepo = new Map();
+  for (const c of week) byRepo.set(c.repo, (byRepo.get(c.repo) ?? 0) + 1);
+  const [repo, n] = [...byRepo].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+  const info = data.repos.find((r) => r.name === repo);
+  // Commit messages only from public repos; a private one shows just its name.
+  const latest = week.find((c) => c.repo === repo)?.message;
+  const line = !repo ? "A quiet week, nothing in progress"
+    : info?.description ? info.description
+    : !info?.isPrivate && latest ? `Latest: ${latest}`
+    : `${plural(n, "commit")} this week`;
 
-function pet(t, data) {
-  const { commits } = data;
-  const last = commits[0]?.date;
-  const daysSince = last ? (now - last) / DAY : Infinity;
-  const { mood, line } = petState(daysSince);
-  const weekSnacks = commits.filter((c) => c.date >= now - 7 * DAY).length;
-  const level = Math.max(1, Math.floor(Math.sqrt(data.yearTotal)));
-
-  // A small ink stamp straight on the paper: espresso outline, bronze wash.
-  const tone = { o: [t.ink, 0.8], k: [t.ink, 0.8], b: [t.accent, 0.16], n: [t.accent, 0.7], f: [t.accent, 0.5], w: [t.paper, 1], t: [t.paper, 1] };
-  const frame = (over) => SPRITE.base.map((r, i) => over?.[i] ?? r);
-  const PX = 4, S = 16 * PX;
-  // `solid` backs each pixel with the paper so a frame can cover the one beneath it.
-  const draw = (rows, solid = false) => rows.flatMap((row, y) => [...row].map((ch, x) => {
-    if (ch === ".") return "";
-    const [fill, op] = tone[ch];
-    const at = `x="${x * PX}" y="${y * PX}" width="${PX - 0.4}" height="${PX - 0.4}"`;
-    return `${solid ? `<rect ${at} fill="${t.paper}"/>` : ""}<rect ${at} fill="${fill}" fill-opacity="${op}"/>`;
-  })).join("");
-  const sprite = mood === "sleeping"
-    ? draw(frame(SPRITE.closed))
-    : `${draw(frame(mood === "hungry" ? SPRITE.hungry : null))}<g class="blink">${draw(frame(SPRITE.closed), true)}</g>`;
-
-  const hrs = Math.floor(daysSince * 24);
-  const ago = !last ? "never" : hrs < 1 ? "just now" : daysSince < 1 ? `${hrs} hours ago` : `${Math.floor(daysSince)} days ago`;
+  const days = lastDays(7).reverse();
+  const touched = new Set(week.filter((c) => c.repo === repo).map((c) => c.day));
+  const colW = (W - 2 * PAD) / 7;
+  const dots = days.map((d, i) => {
+    const x = PAD + colW * i + colW / 2;
+    const on = touched.has(d.day);
+    return `<circle cx="${x}" cy="168" r="3.5" fill="${on ? t.accent : "none"}" stroke="${on ? t.accent : t.faint}"/>
+<text x="${x}" y="190" text-anchor="middle" class="sc"${i === 6 ? ` style="fill:${t.accent}"` : ""}>${i === 6 ? "TODAY" : d.weekday.toUpperCase()}</text>`;
+  }).join("");
 
   const body = `
-${headline(esc(cap(PET_NAME)))}
-${note(line)}
-<g transform="translate(${W - PAD - S} 68)">${sprite}</g>
-<text x="${PAD}" y="164" class="sc">LAST FED</text>
-<text x="${PAD}" y="186" font-size="14" class="b">${cap(ago)}</text>
-<text x="${PAD + 130}" y="164" class="sc">THIS WEEK</text>
-<text x="${PAD + 130}" y="186" font-size="14" class="b">${plural(weekSnacks, "commit")}</text>
-<text x="${PAD + 260}" y="164" class="sc">LEVEL</text>
-<text x="${PAD + 260}" y="186" font-size="14" class="b">${level}</text>`;
-
-  return card(t, `${PET_NAME}, ${USER}'s commit-fed pet`, "Companion", "Feeds on commits",
-    body + `<style>.blink{opacity:0;animation:blink 6s steps(1) infinite}@keyframes blink{0%,95%{opacity:0}96%,98%{opacity:1}}</style>`);
+${headline(esc(repo ?? "Resting"))}
+${note(trunc(line, 58))}
+${dots}`;
+  return card(t, `What ${USER} is building`, "Now building", repo ? `${plural(n, "commit")} this week` : "", body);
 }
 
 // ---------- main ----------
 
 const data = await collect();
 await mkdir(OUT, { recursive: true });
-for (const [name, render] of Object.entries({ almanac, hours, year, pet })) {
+for (const [name, render] of Object.entries({ building: nowBuilding, hours, year })) {
   for (const [mode, theme] of Object.entries(THEMES)) {
     await writeFile(join(OUT, `${name}-${mode}.svg`), render(theme, data));
   }
