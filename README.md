@@ -1,12 +1,16 @@
 <!-- Fixed widths let the cards wrap: two per row on desktop, stacked on phones. -->
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rudnam/rudnam/output/weather-dark.svg">
-    <img alt="rudnam's coding forecast" src="https://raw.githubusercontent.com/rudnam/rudnam/output/weather-light.svg" width="380">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rudnam/rudnam/output/almanac-dark.svg">
+    <img alt="rudnam's coding almanac" src="https://raw.githubusercontent.com/rudnam/rudnam/output/almanac-light.svg" width="380">
   </picture>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rudnam/rudnam/output/clock-dark.svg">
-    <img alt="When rudnam commits" src="https://raw.githubusercontent.com/rudnam/rudnam/output/clock-light.svg" width="380">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rudnam/rudnam/output/hours-dark.svg">
+    <img alt="When rudnam commits" src="https://raw.githubusercontent.com/rudnam/rudnam/output/hours-light.svg" width="380">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rudnam/rudnam/output/year-dark.svg">
+    <img alt="rudnam's year of contributions" src="https://raw.githubusercontent.com/rudnam/rudnam/output/year-light.svg" width="380">
   </picture>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rudnam/rudnam/output/pet-dark.svg">

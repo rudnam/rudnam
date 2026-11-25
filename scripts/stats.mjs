@@ -1,5 +1,7 @@
-// Renders the profile README cards (coding weather, pixel pet, commit clock)
-// from the GitHub GraphQL API. Usage: GITHUB_TOKEN=... node scripts/stats.mjs [outDir]
+// Renders the profile README cards (almanac, commit hours, the year, pet) from
+// the GitHub GraphQL API, in rudnam.com's quiet look: ivory paper, espresso ink,
+// a muted bronze accent, PT Serif, and one idea per card.
+// Usage: GITHUB_TOKEN=... node scripts/stats.mjs [outDir]
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,7 +37,10 @@ async function fetchProfile() {
       user(login: $login) {
         id createdAt
         contributionsCollection {
-          contributionCalendar { totalContributions }
+          contributionCalendar {
+            totalContributions
+            weeks { contributionDays { date contributionCount } }
+          }
           restrictedContributionsCount
         }
         repositories(first: 100, ownerAffiliations: OWNER, isFork: false,
@@ -76,11 +81,12 @@ async function fetchCommits(repo, authorId, since) {
 
 // Local-time parts of a date in TZ.
 const partsFmt = new Intl.DateTimeFormat("en-US", {
-  timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23", weekday: "short",
+  timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  hourCycle: "h23", weekday: "short",
 });
 function local(date) {
   const p = Object.fromEntries(partsFmt.formatToParts(date).map((x) => [x.type, x.value]));
-  return { day: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour), weekday: p.weekday };
+  return { day: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour), minute: Number(p.minute), weekday: p.weekday };
 }
 
 const LANGUAGE_NAMES = { HCL: "Terraform" };
@@ -104,55 +110,55 @@ async function collect() {
     createdAt: new Date(profile.createdAt),
     yearTotal: cc.contributionCalendar.totalContributions,
     yearPrivate: cc.restrictedContributionsCount,
+    calendar: cc.contributionCalendar.weeks.map((w) => w.contributionDays),
     commits,
   };
 }
 
 // ---------- shared ----------
 
+// The site's palette (src/styles/global.css in rudnam-site).
 const THEMES = {
-  light: { bg: "#ffffff", border: "#d1d9e0", text: "#1f2328", muted: "#59636e", faint: "#818b98",
-           hair: "#e8ecf0", panel: "#f6f8fa", accent: "#8250df" },
-  dark:  { bg: "#0d1117", border: "#3d444d", text: "#f0f6fc", muted: "#9198a1", faint: "#656c76",
-           hair: "#21262d", panel: "#151b23", accent: "#a371f7" },
+  light: { paper: "#fbf9f4", hair: "#e3ddd1", ink: "#211e1a", body: "#47423b", muted: "#7c7468", faint: "#a69e90", accent: "#8a7154" },
+  dark:  { paper: "#161412", hair: "#2a2622", ink: "#f2eee7", body: "#d2cabc", muted: "#a69e90", faint: "#766f64", accent: "#c4ad8c" },
 };
-const SANS = `Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif`;
-const MONO = `ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace`;
-const W = 480, H = 244, PAD = 24;
+const SERIF = `'PT Serif', Georgia, 'Times New Roman', serif`;
+const W = 480, H = 220, PAD = 32;
 
-// Inter (OFL, see fonts/OFL.txt), subset to ASCII and embedded: SVGs shown as
-// images can't load external fonts.
+// PT Serif (OFL, see fonts/OFL.txt), subset to ASCII and embedded:
+// SVGs shown as images can't load external fonts.
 const FONT_DIR = join(dirname(fileURLToPath(import.meta.url)), "fonts");
-const FONT_FACES = (await Promise.all([300, 400, 500, 600].map(async (w) => {
-  const b64 = (await readFile(join(FONT_DIR, `inter-${w}.woff2`))).toString("base64");
-  return `@font-face{font-family:Inter;font-weight:${w};src:url(data:font/woff2;base64,${b64}) format('woff2')}`;
+const FONT_FACES = (await Promise.all([["normal", "400"], ["italic", "400i"]].map(async ([style, file]) => {
+  const b64 = (await readFile(join(FONT_DIR, `ptserif-${file}.woff2`))).toString("base64");
+  return `@font-face{font-family:'PT Serif';font-weight:400;font-style:${style};src:url(data:font/woff2;base64,${b64}) format('woff2')}`;
 }))).join("");
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const plural = (n, word) => `${n.toLocaleString("en-US")} ${word}${n === 1 ? "" : "s"}`;
+const cap = (s) => s[0].toUpperCase() + s.slice(1);
 
-function card(t, title, eyebrow, aside, body, style = "") {
+// Every card has the same bones: a small-caps label, an italic aside, one large
+// line (the headline) with an italic note under it, and one quiet graphic below.
+const HEAD_Y = 96, NOTE_Y = 118;
+
+function card(t, title, eyebrow, aside, body) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)}">
 <title>${esc(title)}</title>
 <style>
 ${FONT_FACES}
-text{font-family:${SANS};fill:${t.text};font-variant-numeric:tabular-nums}
-.m{fill:${t.muted}}.f{fill:${t.faint}}.mono{font-family:${MONO}}
-.eb{font-size:10px;font-weight:600;letter-spacing:.09em;fill:${t.muted}}
-${style}
+text{font-family:${SERIF};fill:${t.ink};font-variant-numeric:lining-nums tabular-nums}
+.b{fill:${t.body}}.m{fill:${t.muted}}.f{fill:${t.faint}}.a{fill:${t.accent}}.i{font-style:italic}
+.sc{font-size:9.5px;letter-spacing:.16em;fill:${t.muted}}
 </style>
-<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="10" fill="${t.bg}" stroke="${t.border}"/>
-<text x="${PAD}" y="36" class="eb">${esc(eyebrow.toUpperCase())}</text>
-<text x="${W - PAD}" y="36" font-size="11" class="f" text-anchor="end">${esc(aside)}</text>
+<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="3" fill="${t.paper}" stroke="${t.hair}"/>
+<text x="${PAD}" y="44" class="sc">${esc(eyebrow.toUpperCase())}</text>
+<text x="${W - PAD}" y="44" font-size="11.5" class="m i" text-anchor="end">${esc(aside)}</text>
 ${body}
 </svg>`;
 }
 
-const hairline = (t, y, x1 = PAD, x2 = W - PAD) => `<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="${t.hair}"/>`;
-
-// Uppercase label over a value.
-const stat = (x, y, label, value, size = 15) =>
-  `<text x="${x}" y="${y}" class="eb">${esc(label.toUpperCase())}</text><text x="${x}" y="${y + size + 7}" font-size="${size}">${value}</text>`;
+const headline = (text, size = 26) => `<text x="${PAD - 1}" y="${HEAD_Y}" font-size="${size}">${text}</text>`;
+const note = (text) => `<text x="${PAD}" y="${NOTE_Y}" font-size="12.5" class="m i">${esc(text)}</text>`;
 
 // Calendar days (YYYY-MM-DD in TZ) going back from today, newest first.
 function lastDays(n) {
@@ -177,7 +183,18 @@ function streak(byDay) {
   return n;
 }
 
-// ---------- weather ----------
+// en-GB puts the day first ("25 November"); en-US keeps "Sep" short.
+const dateFmt = (opts, locale = "en-GB") => new Intl.DateTimeFormat(locale, { timeZone: TZ, ...opts });
+
+function languageLine(commits, lead = "Mostly") {
+  const langs = new Map();
+  for (const c of commits) langs.set(c.lang, (langs.get(c.lang) ?? 0) + 1);
+  const top = [...langs].sort((a, b) => b[1] - a[1]).map(([l]) => l).filter((l) => l !== "Other").slice(0, 3);
+  if (!top.length) return "";
+  return `${lead} ${top[0]}${top.length > 1 ? `, then ${top.slice(1).join(" and ")}` : ""}`;
+}
+
+// ---------- almanac (coding weather) ----------
 
 // Line icons on a 24-unit grid (Feather, MIT).
 const ICONS = {
@@ -187,7 +204,7 @@ const ICONS = {
   storm: `<path d="M19 16.9A5 5 0 0 0 18 7h-1.3a8 8 0 1 0-11.6 9"/><path d="M13 11l-4 6h6l-4 6"/>`,
 };
 
-function icon(kind, x, y, size, color, width = 1.5) {
+function icon(kind, x, y, size, color, width = 1) {
   const s = size / 24;
   return `<g transform="translate(${x - size / 2} ${y - size / 2}) scale(${s})" fill="none" stroke="${color}" stroke-width="${width / s}" stroke-linecap="round" stroke-linejoin="round">${ICONS[kind]}</g>`;
 }
@@ -199,61 +216,36 @@ function condition(count) {
   return ["storm", "Thunderstorms"];
 }
 
-function intensity(share) {
-  if (share >= 0.6) return "heavy";
-  if (share >= 0.3) return "steady";
-  if (share >= 0.1) return "scattered";
-  return "light";
-}
-
-function weather(t, data) {
+function almanac(t, data) {
   const { commits } = data;
   const byDay = countByDay(commits);
   const week = lastDays(7).reverse();
-  const weekCommits = commits.filter((c) => c.date >= now - 7 * DAY);
   const last24 = commits.filter((c) => c.date >= now - DAY).length;
-
-  const langs = new Map();
-  for (const c of weekCommits) langs.set(c.lang, (langs.get(c.lang) ?? 0) + 1);
-  const top = [...langs].sort((a, b) => b[1] - a[1]).slice(0, 2);
-  const cap = (s) => s[0].toUpperCase() + s.slice(1);
-  const summary = top.length
-    ? top.map(([lang, n], i) => `${i ? intensity(n / weekCommits.length) : cap(intensity(n / weekCommits.length))} ${lang}`).join(", ")
-    : "Calm week, nothing in the air";
-
   const activeDays28 = lastDays(28).filter((d) => byDay.has(d.day)).length;
   const chance = Math.round((activeDays28 / 28) * 100);
-  const privatePct = data.yearTotal ? Math.round((data.yearPrivate / data.yearTotal) * 100) : 0;
-  const dateLabel = new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric" }).format(now);
-
+  const dateLabel = dateFmt({ weekday: "long", day: "numeric", month: "long" }).format(now);
   const [kind, label] = condition(last24);
-  const numW = String(last24).length * 26;
 
+  // The week as a quiet row of numbers; today in bronze.
   const colW = (W - 2 * PAD) / 7;
   const days = week.map((d, i) => {
     const x = PAD + colW * i + colW / 2;
     const n = byDay.get(d.day) ?? 0;
     const today = i === week.length - 1;
-    return `<text x="${x}" y="142" text-anchor="middle" class="eb"${today ? ` style="fill:${t.text}"` : ""}>${today ? "TODAY" : d.weekday.toUpperCase()}</text>
-${icon(condition(n)[0], x, 164, 18, n ? (today ? t.accent : t.text) : t.faint)}
-<text x="${x}" y="194" text-anchor="middle" font-size="12"${n ? "" : ` class="f"`}>${n}</text>`;
+    return `<text x="${x}" y="164" text-anchor="middle" class="sc"${today ? ` style="fill:${t.accent}"` : ""}>${today ? "TODAY" : d.weekday.toUpperCase()}</text>
+<text x="${x}" y="186" text-anchor="middle" font-size="14" class="${today ? "a" : n ? "b" : "f"}">${n}</text>`;
   }).join("\n");
 
   const body = `
-<text x="${PAD - 2}" y="96" font-size="48" font-weight="300" letter-spacing="-1.5">${last24}</text>
-<text x="${PAD + numW + 12}" y="74" font-size="15" font-weight="500">${label}</text>
-<text x="${PAD + numW + 12}" y="94" font-size="12" class="m">commits in the last 24 hours  ·  ${chance}% chance tomorrow</text>
-${icon(kind, W - PAD - 18, 76, 36, t.accent, 1.4)}
-${hairline(t, 118)}
-${days}
-${hairline(t, 210)}
-<text x="${PAD}" y="229" font-size="11" class="m">${esc(summary)}</text>
-<text x="${W - PAD}" y="229" font-size="11" class="m" text-anchor="end">${streak(byDay)}-day streak  ·  ${privatePct}% private</text>`;
+${headline(label)}
+${note(`${plural(last24, "commit")} in the last day, ${chance}% chance tomorrow`)}
+${icon(kind, W - PAD - 16, 88, 32, t.accent)}
+${days}`;
 
-  return card(t, `${USER}'s coding forecast`, "Coding forecast", `${dateLabel} · ${PLACE}`, body);
+  return card(t, `${USER}'s coding almanac`, "Coding almanac", `${dateLabel} · ${PLACE}`, body);
 }
 
-// ---------- commit clock ----------
+// ---------- commit hours ----------
 
 function chronotype(byHour, total) {
   const share = (from, to) => {
@@ -262,67 +254,78 @@ function chronotype(byHour, total) {
     return n / total;
   };
   const pct = (x) => `${Math.round(x * 100)}%`;
-  if (share(22, 4) >= 0.35) return ["Night owl", `${pct(share(22, 4))} of commits between 22:00 and 04:00`];
+  if (share(22, 4) >= 0.35) return ["Night owl", `${pct(share(22, 4))} of commits after 22:00`];
   if (share(5, 9) >= 0.25) return ["Early bird", `${pct(share(5, 9))} of commits before 09:00`];
   if (share(9, 18) >= 0.6) return ["Nine-to-fiver", `${pct(share(9, 18))} of commits in office hours`];
-  if (share(18, 22) >= 0.35) return ["Evening coder", `${pct(share(18, 22))} of commits between 18:00 and 22:00`];
-  return ["Round the clock", "No single time of day dominates"];
+  if (share(18, 22) >= 0.35) return ["Evening coder", `${pct(share(18, 22))} of commits from 18:00 to 22:00`];
+  return ["Round the clock", "no hour of the day dominates"];
 }
 
-function clock(t, data) {
+function hours(t, data) {
   const { commits } = data;
   const byHour = Array(24).fill(0);
-  const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const byWeekday = Object.fromEntries(WEEKDAYS.map((d) => [d, 0]));
-  for (const c of commits) { byHour[c.hour]++; byWeekday[c.weekday]++; }
+  for (const c of commits) byHour[c.hour]++;
   const total = commits.length;
   const max = Math.max(1, ...byHour);
   const peak = byHour.indexOf(Math.max(...byHour));
-  const hh = (h) => `${String(h).padStart(2, "0")}:00`;
-  const [type, why] = total ? chronotype(byHour, total) : ["Hibernating", "No commits in the last year"];
+  const [type, why] = total ? chronotype(byHour, total) : ["Hibernating", "no commits in the last year"];
 
-  const cx = 118, cy = 142, r0 = 22, r1 = 76;
-  const pt = (r, a) => `${(cx + Math.cos(a) * r).toFixed(2)} ${(cy + Math.sin(a) * r).toFixed(2)}`;
-  const ang = (h) => (h / 24) * 2 * Math.PI - Math.PI / 2;
-  const gap = 0.035;
-  const wedges = byHour.map((n, h) => {
-    if (!n) return "";
-    const a0 = ang(h - 0.5) + gap, a1 = ang(h + 0.5) - gap;
-    const r = r0 + 3 + (n / max) * (r1 - r0 - 3);
-    return `<path d="M${pt(r0 + 3, a0)} L${pt(r, a0)} A${r} ${r} 0 0 1 ${pt(r, a1)} L${pt(r0 + 3, a1)} A${r0 + 3} ${r0 + 3} 0 0 0 ${pt(r0 + 3, a0)}Z" fill="${t.accent}" fill-opacity="${(0.25 + 0.75 * (n / max)).toFixed(2)}"/>`;
+  // One strip of hairline bars across the day.
+  const base = 178, tall = 34;
+  const step = (W - 2 * PAD) / 24;
+  const nowH = local(now).hour;
+  const bars = byHour.map((n, h) => {
+    const x = PAD + step * h + step / 2;
+    if (!n) return `<circle cx="${x.toFixed(1)}" cy="${base - 1}" r="0.9" fill="${t.faint}"/>`;
+    const hgt = Math.max(2, (n / max) * tall);
+    return `<rect x="${(x - 1.25).toFixed(1)}" y="${(base - hgt).toFixed(1)}" width="2.5" height="${hgt.toFixed(1)}" fill="${t.accent}"/>`;
   }).join("");
-  const rings = [r0, (r0 + r1) / 2, r1].map((r) => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${t.hair}"/>`).join("");
-  const ticks = [0, 6, 12, 18].map((h) => {
-    const [x, y] = pt(r1 + 13, ang(h)).split(" ").map(Number);
-    return `<text x="${x}" y="${y + 3.5}" font-size="9" class="f mono" text-anchor="middle">${String(h).padStart(2, "0")}</text>`;
-  }).join("");
-  const nowA = ang(local(now).hour + new Date().getMinutes() / 60);
-  const [hx, hy] = pt(r1, nowA).split(" ");
-  const hand = `<circle cx="${hx}" cy="${hy}" r="5" fill="${t.bg}"/><circle class="pulse" cx="${hx}" cy="${hy}" r="3" fill="${t.text}"/>`;
-
-  const X = 236;
-  const wmax = Math.max(1, ...Object.values(byWeekday));
-  const bw = (W - PAD - X) / 7;
-  const week = WEEKDAYS.map((d, i) => {
-    const h = Math.max(2, (byWeekday[d] / wmax) * 26);
-    const x = X + i * bw;
-    return `<rect x="${x}" y="${214 - h}" width="${bw - 8}" height="${h}" rx="1.5" fill="${t.accent}" fill-opacity="${(0.25 + 0.75 * (byWeekday[d] / wmax)).toFixed(2)}"/>
-<text x="${x + (bw - 8) / 2}" y="229" font-size="9" class="f" text-anchor="middle">${d[0]}</text>`;
-  }).join("");
+  const nowX = PAD + step * nowH + step / 2;
+  const labels = [[0, "midnight"], [6, "6 am"], [12, "noon"], [18, "6 pm"]].map(([h, l]) =>
+    `<text x="${(PAD + step * h + step / 2).toFixed(1)}" y="${base + 18}" font-size="10.5" class="f i" text-anchor="${h ? "middle" : "start"}"${h ? "" : ` dx="-1.5"`}>${l}</text>`).join("");
 
   const body = `
-${rings}${wedges}${ticks}${hand}
-<text x="${X}" y="76" font-size="22" font-weight="500" letter-spacing="-.3">${esc(type)}</text>
-<text x="${X}" y="96" font-size="12" class="m">${esc(why)}</text>
-${stat(X, 128, "Peak hour", hh(peak))}
-${stat(X + 112, 128, "Commits", total)}`
-+ `\n${week}`;
+${headline(esc(type))}
+${note(`${cap(why)}, busiest around ${String(peak).padStart(2, "0")}:00`)}
+${bars}
+<circle cx="${nowX.toFixed(1)}" cy="${base + 5}" r="1.6" fill="${t.ink}"/>
+${labels}`;
 
-  return card(t, `When ${USER} commits`, "Commit clock", `Last 12 months · ${PLACE}`, body,
-    `.pulse{animation:pulse 2.4s ease-in-out infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}`);
+  return card(t, `When ${USER} commits`, "Hours", `Last twelve months · ${PLACE}`, body);
 }
 
-// ---------- pixel pet ----------
+// ---------- the year ----------
+
+function year(t, data) {
+  const weeks = data.calendar.slice(-53);
+  const totals = weeks.map((w) => w.reduce((s, d) => s + d.contributionCount, 0));
+  const activeDays = weeks.flat().filter((d) => d.contributionCount).length;
+  const max = Math.max(1, ...totals);
+
+  // Weekly totals as one thin line with a faint wash beneath it.
+  const top = 142, base = 182;
+  const step = (W - 2 * PAD) / (totals.length - 1);
+  const pts = totals.map((n, i) => [PAD + i * step, base - (n / max) * (base - top)]);
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join("");
+  const [lx, ly] = pts.at(-1);
+
+  const first = weeks[0][0].date;
+  const fmt = (d) => dateFmt({ month: "short", year: "numeric", timeZone: "UTC" }, "en-US").format(new Date(`${d}T00:00:00Z`));
+
+  const body = `
+${headline(`${data.yearTotal.toLocaleString("en-US")} contributions`)}
+${note(`On ${activeDays} days of the last year`)}
+<line x1="${PAD}" x2="${W - PAD}" y1="${base}" y2="${base}" stroke="${t.hair}"/>
+<path d="${line}L${W - PAD} ${base}L${PAD} ${base}Z" fill="${t.accent}" fill-opacity=".08"/>
+<path d="${line}" fill="none" stroke="${t.accent}" stroke-width="1.2" stroke-linejoin="round"/>
+<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="2" fill="${t.accent}"/>
+<text x="${PAD}" y="${base + 18}" font-size="10.5" class="f i">${fmt(first)}</text>
+<text x="${W - PAD}" y="${base + 18}" font-size="10.5" class="f i" text-anchor="end">now</text>`;
+
+  return card(t, `${USER}'s year of contributions`, "The year", languageLine(data.commits), body);
+}
+
+// ---------- pet ----------
 
 // 16x16 sprite. o outline, b body, w eye white, k pupil, n nose, t tooth, f paws.
 const SPRITE = {
@@ -352,8 +355,8 @@ const SPRITE = {
 function petState(daysSince) {
   if (daysSince < 1) return { mood: "happy", line: "Well fed and in high spirits" };
   if (daysSince < 3) return { mood: "content", line: "Full, and a little sleepy" };
-  if (daysSince < 7) return { mood: "hungry", line: "Hungry. A commit would help" };
-  return { mood: "sleeping", line: "Hibernating until the next commit" };
+  if (daysSince < 7) return { mood: "hungry", line: "Hungry, a commit would help" };
+  return { mood: "sleeping", line: "Asleep until the next commit" };
 }
 
 function pet(t, data) {
@@ -363,62 +366,45 @@ function pet(t, data) {
   const { mood, line } = petState(daysSince);
   const weekSnacks = commits.filter((c) => c.date >= now - 7 * DAY).length;
   const level = Math.max(1, Math.floor(Math.sqrt(data.yearTotal)));
-  const ageYears = Math.floor((now - data.createdAt) / (365.25 * DAY));
-  const fullness = Math.max(0, Math.min(5, Math.round(5 - daysSince)));
 
-  // Two-tone LCD: ink for outlines, a light wash of ink for the body.
-  const ink = t.text;
-  const tone = { o: [ink, 0.9], k: [ink, 0.9], b: [ink, 0.1], n: [ink, 0.4], f: [ink, 0.4], w: [t.panel, 1], t: [t.panel, 1] };
+  // A small ink stamp straight on the paper: espresso outline, bronze wash.
+  const tone = { o: [t.ink, 0.8], k: [t.ink, 0.8], b: [t.accent, 0.16], n: [t.accent, 0.7], f: [t.accent, 0.5], w: [t.paper, 1], t: [t.paper, 1] };
   const frame = (over) => SPRITE.base.map((r, i) => over?.[i] ?? r);
-  const PX = 7, S = 16 * PX;
-  const LCD = { x: PAD, y: 54, w: 164, h: 166 };
-  const ox = LCD.x + (LCD.w - S) / 2, oy = LCD.y + 22;
-  // `solid` backs each pixel with the panel colour so a frame can cover the one beneath it.
+  const PX = 4, S = 16 * PX;
+  // `solid` backs each pixel with the paper so a frame can cover the one beneath it.
   const draw = (rows, solid = false) => rows.flatMap((row, y) => [...row].map((ch, x) => {
     if (ch === ".") return "";
     const [fill, op] = tone[ch];
-    const at = `x="${x * PX}" y="${y * PX}" width="${PX - 0.5}" height="${PX - 0.5}"`;
-    return `${solid ? `<rect ${at} fill="${t.panel}"/>` : ""}<rect ${at} fill="${fill}" fill-opacity="${op}"/>`;
+    const at = `x="${x * PX}" y="${y * PX}" width="${PX - 0.4}" height="${PX - 0.4}"`;
+    return `${solid ? `<rect ${at} fill="${t.paper}"/>` : ""}<rect ${at} fill="${fill}" fill-opacity="${op}"/>`;
   })).join("");
-  // Asleep: eyes stay closed. Awake: an open frame with a closed one flashed over it to blink.
   const sprite = mood === "sleeping"
     ? draw(frame(SPRITE.closed))
     : `${draw(frame(mood === "hungry" ? SPRITE.hungry : null))}<g class="blink">${draw(frame(SPRITE.closed), true)}</g>`;
-  const extra = mood === "sleeping"
-    ? ["z", "z", "Z"].map((z, i) => `<text class="zzz mono" style="animation-delay:${i * 0.8}s" x="${S - 6 + i * 8}" y="${10 - i * 9}" font-size="${9 + i * 2}">${z}</text>`).join("")
-    : "";
 
-  const hours = Math.floor(daysSince * 24);
-  const ago = !last ? "Never" : hours < 1 ? "Just now" : daysSince < 1 ? `${hours}h ago` : `${Math.floor(daysSince)}d ago`;
-  const X = 216;
-  const segW = 36;
-  const meter = [...Array(5)].map((_, i) =>
-    `<rect x="${X + i * (segW + 4)}" y="148" width="${segW}" height="4" rx="2" fill="${i < fullness ? t.accent : t.hair}"/>`).join("");
+  const hrs = Math.floor(daysSince * 24);
+  const ago = !last ? "never" : hrs < 1 ? "just now" : daysSince < 1 ? `${hrs} hours ago` : `${Math.floor(daysSince)} days ago`;
 
   const body = `
-<rect x="${LCD.x}" y="${LCD.y}" width="${LCD.w}" height="${LCD.h}" rx="8" fill="${t.panel}" stroke="${t.hair}"/>
-<g transform="translate(${ox} ${oy})"><g class="${mood === "sleeping" ? "breathe slow" : "breathe"}">${sprite}</g>${extra}</g>
-<text x="${X}" y="76" font-size="22" font-weight="500" letter-spacing="-.3">${esc(PET_NAME[0].toUpperCase() + PET_NAME.slice(1))}</text>
-<text x="${X}" y="96" font-size="12" class="m">Level ${level}  ·  ${ageYears} years old</text>
-<text x="${X}" y="134" class="eb">FULLNESS</text>
-${meter}
-<text x="${X}" y="174" font-size="12" class="m">${esc(line)}</text>
-${hairline(t, 190, X)}
-${stat(X, 208, "Last fed", ago, 13)}
-${stat(X + 112, 208, "This week", plural(weekSnacks, "commit"), 13)}`;
+${headline(esc(cap(PET_NAME)))}
+${note(line)}
+<g transform="translate(${W - PAD - S} 68)">${sprite}</g>
+<text x="${PAD}" y="164" class="sc">LAST FED</text>
+<text x="${PAD}" y="186" font-size="14" class="b">${cap(ago)}</text>
+<text x="${PAD + 130}" y="164" class="sc">THIS WEEK</text>
+<text x="${PAD + 130}" y="186" font-size="14" class="b">${plural(weekSnacks, "commit")}</text>
+<text x="${PAD + 260}" y="164" class="sc">LEVEL</text>
+<text x="${PAD + 260}" y="186" font-size="14" class="b">${level}</text>`;
 
-  const style = `.breathe{animation:breathe 2.4s steps(1) infinite}.slow{animation-duration:4.8s}
-@keyframes breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(${PX / 7}px)}}
-.blink{opacity:0;animation:blink 6s steps(1) infinite}@keyframes blink{0%,95%{opacity:0}96%,98%{opacity:1}}
-.zzz{fill:${t.muted};opacity:0;animation:zzz 2.4s ease-out infinite}@keyframes zzz{0%{opacity:0}30%{opacity:1}100%{opacity:0;translate:3px -8px}}`;
-  return card(t, `${PET_NAME}, ${USER}'s commit-fed pet`, "Companion", "Feeds on commits", body, style);
+  return card(t, `${PET_NAME}, ${USER}'s commit-fed pet`, "Companion", "Feeds on commits",
+    body + `<style>.blink{opacity:0;animation:blink 6s steps(1) infinite}@keyframes blink{0%,95%{opacity:0}96%,98%{opacity:1}}</style>`);
 }
 
 // ---------- main ----------
 
 const data = await collect();
 await mkdir(OUT, { recursive: true });
-for (const [name, render] of Object.entries({ weather, pet, clock })) {
+for (const [name, render] of Object.entries({ almanac, hours, year, pet })) {
   for (const [mode, theme] of Object.entries(THEMES)) {
     await writeFile(join(OUT, `${name}-${mode}.svg`), render(theme, data));
   }
